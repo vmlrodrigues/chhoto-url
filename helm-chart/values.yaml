@@ -3,7 +3,7 @@
 # Declare variables to be passed into your templates.
 
 image:
-  repository: ghcr.io/vmlrodrigues/curtaurl
+  repository: ghcr.io/vmlrodrigues/curta-url
   pullPolicy: IfNotPresent
   tag: "latest"
 

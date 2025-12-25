@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 env:
   CARGO_TERM_COLOR: always
-  IMAGE_NAME: curtaurl
+  IMAGE_NAME: curta-url
   BINARY_NAME: curta-url
 
 jobs:

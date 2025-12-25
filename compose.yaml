@@ -3,7 +3,7 @@
 
 services:
   curtaurl:
-    image: ghcr.io/vmlrodrigues/curtaurl:latest
+    image: ghcr.io/vmlrodrigues/curta-url:latest
     # You may want to check out the alpine images for extra features. The images can also be
     # pulled from ghcr.io
     restart: unless-stopped

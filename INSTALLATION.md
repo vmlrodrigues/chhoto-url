@@ -11,7 +11,7 @@ The container images come in two flavors. The default one is made from scratch, 
 The tags with `-alpine` suffix are built on top of alpine, so are a little bit larger. But they have
 the basic UNIX tools for debugging, so might be worth using in case you want to play around with the image.
 The `dev` tags are always built on top of alpine. Images are published to GHCR at
-`ghcr.io/vmlrodrigues/curtaurl`. These images are available for `linux/amd64`, `linux/arm64`, and
+`ghcr.io/vmlrodrigues/curta-url`. These images are available for `linux/amd64`, `linux/arm64`, and
 `linux/arm/v7` architectures on Linux. These should also work just fine with `podman`, or any other
 container engine supporting OCI images.
 
@@ -36,13 +36,13 @@ feel free to open a discussion.
 0. (Only if you really want to) Build the image for the default `x86_64-unknown-linux-musl` target:
 
 ```
-docker build . -t ghcr.io/vmlrodrigues/curtaurl:latest
+docker build . -t ghcr.io/vmlrodrigues/curta-url:latest
 ```
 
 For building on `arm64` or `arm/v7`, use the following:
 
 ```
-docker build . -t ghcr.io/vmlrodrigues/curtaurl:latest --build-arg target=<desired-target>
+docker build . -t ghcr.io/vmlrodrigues/curta-url:latest --build-arg target=<desired-target>
 ```
 
 Make sure that the desired target is a `musl` one, since the docker image is built from `scratch`.
@@ -54,7 +54,7 @@ mentioned above., For any other architectures, open a discussion, and I'll try t
 ```
 docker run -p 4567:4567 \
     -e password="password"
-    -d ghcr.io/vmlrodrigues/curtaurl:latest
+    -d ghcr.io/vmlrodrigues/curta-url:latest
 ```
 
 1.a Make the database file available to host (optional)
@@ -65,7 +65,7 @@ docker run -p 4567:4567 \
     -e password="password" \
     -v ./data:/data \
     -e db_url=/data/urls.sqlite \
-    -d ghcr.io/vmlrodrigues/curtaurl:latest
+    -d ghcr.io/vmlrodrigues/curta-url:latest
 ```
 
 _Note: All of this pretty much works exactly the same if you replace `docker` with `podman`. In fact,

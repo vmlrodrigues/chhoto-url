@@ -12,7 +12,7 @@ Description=CurtaURL
 
 [Container]
 ContainerName=curtaurl
-Image=ghcr.io/vmlrodrigues/curtaurl:latest
+Image=ghcr.io/vmlrodrigues/curta-url:latest
 PodmanArgs=--tty
 PublishPort=4567:4567
 DropCapability=ALL

@@ -6,7 +6,7 @@
 [![latest-release-badge](https://img.shields.io/github/v/release/vmlrodrigues/curtaurl?label=latest%20release)](https://github.com/vmlrodrigues/curtaurl/releases/latest)
 [![license-badge](https://img.shields.io/github/license/vmlrodrigues/curtaurl)](https://spdx.org/licenses/MIT.html)
 
-# ![Logo](resources/assets/favicon-32.png?v=curtaurl) <span style="font-size:42px">CurtaURL</span>
+# ![Logo](resources/assets/favicon-curta-32.png) <span style="font-size:42px">CurtaURL</span>
 
 # What is it?
 

@@ -8,9 +8,9 @@ edition = "2021"
 authors = ["Sayantan Santra <sayantan[dot]santra689[at]gmail[dot]com"]
 license = "mit"
 description = "A simple selfhosted URL shortener with no unnecessary features."
-homepage = "https://github.com/vmlrodrigues/curtaurl"
-documentation = "https://github.com/vmlrodrigues/curtaurl"
-repository = "https://github.com/vmlrodrigues/curtaurl"
+homepage = "https://github.com/vmlrodrigues/curta-url"
+documentation = "https://github.com/vmlrodrigues/curta-url"
+repository = "https://github.com/vmlrodrigues/curta-url"
 readme = "README.md"
 keywords = [
     "docker",

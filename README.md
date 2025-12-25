@@ -1,10 +1,10 @@
 <!-- SPDX-FileCopyrightText: 2023 Sayantan Santra <sayantan.santra689@gmail.com> -->
 <!-- SPDX-License-Identifier: MIT -->
 
-[![github-tests-badge](https://github.com/vmlrodrigues/curtaurl/actions/workflows/rust-tests.yml/badge.svg)](https://github.com/vmlrodrigues/curtaurl/actions/workflows/rust-tests.yml)
+[![github-tests-badge](https://github.com/vmlrodrigues/curta-url/actions/workflows/rust-tests.yml/badge.svg)](https://github.com/vmlrodrigues/curta-url/actions/workflows/rust-tests.yml)
 [![maintainer-badge](https://img.shields.io/badge/maintainer-vmlrodrigues-blue)](https://github.com/vmlrodrigues)
-[![latest-release-badge](https://img.shields.io/github/v/release/vmlrodrigues/curtaurl?label=latest%20release)](https://github.com/vmlrodrigues/curtaurl/releases/latest)
-[![license-badge](https://img.shields.io/github/license/vmlrodrigues/curtaurl)](https://spdx.org/licenses/MIT.html)
+[![latest-release-badge](https://img.shields.io/github/v/release/vmlrodrigues/curta-url?label=latest%20release)](https://github.com/vmlrodrigues/curta-url/releases/latest)
+[![license-badge](https://img.shields.io/github/license/vmlrodrigues/curta-url)](https://spdx.org/licenses/MIT.html)
 
 # ![Logo](resources/assets/favicon-curta-32.png) <span style="font-size:42px">CurtaURL</span>
 

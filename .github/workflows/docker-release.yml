@@ -180,12 +180,6 @@ jobs:
         with:
           subject-name: ghcr.io/vmlrodrigues/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push-scratch.outputs.digest }}
-      - name: Generate artifact attestation - dev
-        uses: actions/attest-build-provenance@v2
-        if: github.ref_type != 'tag'
-        with:
-          subject-name: ghcr.io/vmlrodrigues/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.push-dev.outputs.digest }}
 
       # Create a release with changelog
       - name: Generate a changelog

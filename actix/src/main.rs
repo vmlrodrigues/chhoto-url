@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
 
     eprintln!("----------------------------------------------------------------------");
     info!("Starting CurtaURL Server v{}", env!("CARGO_PKG_VERSION"));
-    info!("Source: https://github.com/vmlrodrigues/curtaurl");
+    info!("Source: https://github.com/vmlrodrigues/curta-url");
     eprintln!("----------------------------------------------------------------------");
 
     // Read config from env vars

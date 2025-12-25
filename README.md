@@ -25,12 +25,11 @@ Thanks to [Sayantan Santra](https://github.com/SinTan1729) for the original Chho
 
 ## But why another URL shortener?
 
-Most URL shorteners are either bloated with unnecessary features, or are a pain to set up.
-Even fewer are written with simplicity and lightness in mind. When I saw the `simply-shorten`
-project (linked below), I really liked the idea but thought that it missed some features. Also,
-I didn't like the fact that a simple app like this had a ~200 MB Docker image (mostly due to the
-included Java runtime). So, I decided to rewrite it in Rust and add some features to it that I
-thought were essential (e.g. hit counting).
+The original author of Chhoto URL wrote that many shorteners are either bloated or painful to set up,
+and that very few are built with simplicity and lightness in mind. After looking at `simply-shorten`
+(linked below), they liked the idea but found it missing a few essentials and disliked the large image
+size caused by the Java runtime. They rewrote it in Rust and added features they considered essential,
+such as hit counting. CurtaURL inherits that same design intent.
 
 ## What does the name mean?
 
@@ -76,8 +75,8 @@ Link: [https://shrtn.fyi](https://shrtn.fyi)
   written in plain HTML and vanilla JS, using [Pure CSS](https://purecss.io/)
   for styling.
 - Uses very basic authentication using a provided password. It's not encrypted in transport.
-  I recommend using a reverse proxy such as [caddy](https://caddyserver.com/) to
-  encrypt the connection by SSL.
+  A reverse proxy such as [caddy](https://caddyserver.com/) is recommended to
+  encrypt the connection with SSL.
 
 # Bloat that will not be implemented
 
@@ -88,8 +87,7 @@ Link: [https://shrtn.fyi](https://shrtn.fyi)
 - **Cookies, newsletters**, "we value your privacy" popups or any of the multiple
   other ways the modern web shows how anti-user it is. We all hate those, and they're
   not needed here.
-- **Paywalls** or messages begging for donations. If you want to buy me a coffee,
-  you can message me through GitHub discussions or email me.
+- **Paywalls** or messages begging for donations.
 
 # Screenshots
 

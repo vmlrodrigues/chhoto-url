@@ -11,6 +11,7 @@ use actix_web::{
     Either, HttpRequest, HttpResponse, Responder,
 };
 use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
+use chrono::Utc;
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -35,6 +36,37 @@ pub struct JSONResponse {
     pub success: bool,
     pub error: bool,
     pub reason: String,
+}
+
+#[derive(Deserialize)]
+struct CreateKeyRequest {
+    name: String,
+    notes: Option<String>,
+}
+
+#[derive(Serialize)]
+struct CreateKeyResponse {
+    success: bool,
+    error: bool,
+    id: i64,
+    name: String,
+    key: String,
+    created_at: i64,
+}
+
+#[derive(Serialize)]
+struct KeyListResponse {
+    success: bool,
+    error: bool,
+    keys: Vec<database::ApiKeyRecord>,
+}
+
+#[derive(Serialize)]
+struct KeyRevokeResponse {
+    success: bool,
+    error: bool,
+    id: i64,
+    revoked: bool,
 }
 
 // Define JSON struct for returning backend config
@@ -89,7 +121,7 @@ pub async fn add_link(
 ) -> HttpResponse {
     let config = &data.config;
     // Call is_api_ok() function, pass HttpRequest
-    let result = auth::is_api_ok(http, config);
+    let result = auth::is_api_ok(http, config, &data.db);
     // If success, add new link
     if result.success {
         match utils::add_link(&req, &data.db, config, false) {
@@ -161,7 +193,7 @@ pub async fn getall(
 ) -> HttpResponse {
     let config = &data.config;
     // Call is_api_ok() function, pass HttpRequest
-    let result = auth::is_api_ok(http, config);
+    let result = auth::is_api_ok(http, config, &data.db);
     // If success, return all links
     if result.success {
         HttpResponse::Ok().body(utils::getall(&data.db, params.into_inner()))
@@ -178,7 +210,7 @@ pub async fn getall(
 // Get information about a single shortlink
 #[post("/api/expand")]
 pub async fn expand(req: String, data: web::Data<AppState>, http: HttpRequest) -> HttpResponse {
-    let result = auth::is_api_ok(http, &data.config);
+    let result = auth::is_api_ok(http, &data.config, &data.db);
     if result.success {
         match database::find_url(&req, &data.db) {
             Ok((longurl, hits, expiry_time)) => {
@@ -222,7 +254,7 @@ pub async fn edit_link(
     http: HttpRequest,
 ) -> HttpResponse {
     let config = &data.config;
-    let result = auth::is_api_ok(http, config);
+    let result = auth::is_api_ok(http, config, &data.db);
     if result.success || is_session_valid(session, config) {
         match utils::edit_link(&req, &data.db, config) {
             Ok(()) => {
@@ -283,7 +315,7 @@ pub async fn whoami(
     http: HttpRequest,
 ) -> HttpResponse {
     let config = &data.config;
-    let result = auth::is_api_ok(http, config);
+    let result = auth::is_api_ok(http, config, &data.db);
     let acting_user = if result.success || is_session_valid(session, config) {
         "admin"
     } else if config.public_mode {
@@ -302,7 +334,7 @@ pub async fn getconfig(
     http: HttpRequest,
 ) -> HttpResponse {
     let config = &data.config;
-    let result = auth::is_api_ok(http, config);
+    let result = auth::is_api_ok(http, config, &data.db);
     if result.success || is_session_valid(session, config) || data.config.public_mode {
         let backend_config = BackendConfig {
             version: VERSION.to_string(),
@@ -317,6 +349,147 @@ pub async fn getconfig(
         HttpResponse::Ok().json(backend_config)
     } else {
         HttpResponse::Unauthorized().json(result)
+    }
+}
+
+// Create a managed API key
+#[post("/api/keys")]
+pub async fn create_key(
+    req: String,
+    data: web::Data<AppState>,
+    session: Session,
+    http: HttpRequest,
+) -> HttpResponse {
+    let config = &data.config;
+    let result = auth::is_api_ok(http, config, &data.db);
+    if !(result.success || auth::is_session_valid(session, config)) {
+        return if result.error {
+            HttpResponse::Unauthorized().json(result)
+        } else {
+            HttpResponse::Unauthorized().body("Not logged in!")
+        };
+    }
+
+    let Ok(payload) = serde_json::from_str::<CreateKeyRequest>(&req) else {
+        let response = JSONResponse {
+            success: false,
+            error: true,
+            reason: "Malformed request!".to_string(),
+        };
+        return HttpResponse::BadRequest().json(response);
+    };
+    if payload.name.trim().is_empty() {
+        let response = JSONResponse {
+            success: false,
+            error: true,
+            reason: "Key name must not be empty.".to_string(),
+        };
+        return HttpResponse::BadRequest().json(response);
+    }
+
+    let secret = auth::gen_key();
+    let key_hash = auth::gen_managed_key_hash(&secret);
+    match database::create_api_key(&payload.name, &key_hash, payload.notes.as_deref(), &data.db) {
+        Ok(key_id) => {
+            let response = CreateKeyResponse {
+                success: true,
+                error: false,
+                id: key_id,
+                name: payload.name,
+                key: format!("cu_{key_id}_{secret}"),
+                created_at: Utc::now().timestamp(),
+            };
+            HttpResponse::Created().json(response)
+        }
+        Err(ServerError) => {
+            let response = JSONResponse {
+                success: false,
+                error: true,
+                reason: "Something went wrong while creating the key.".to_string(),
+            };
+            HttpResponse::InternalServerError().json(response)
+        }
+        Err(ClientError { reason }) => {
+            let response = JSONResponse {
+                success: false,
+                error: true,
+                reason,
+            };
+            HttpResponse::Conflict().json(response)
+        }
+    }
+}
+
+// List managed API keys
+#[get("/api/keys")]
+pub async fn list_keys(
+    data: web::Data<AppState>,
+    session: Session,
+    http: HttpRequest,
+) -> HttpResponse {
+    let config = &data.config;
+    let result = auth::is_api_ok(http, config, &data.db);
+    if !(result.success || auth::is_session_valid(session, config)) {
+        return if result.error {
+            HttpResponse::Unauthorized().json(result)
+        } else {
+            HttpResponse::Unauthorized().body("Not logged in!")
+        };
+    }
+
+    let keys = database::list_api_keys(&data.db);
+    let response = KeyListResponse {
+        success: true,
+        error: false,
+        keys,
+    };
+    HttpResponse::Ok().json(response)
+}
+
+// Revoke a managed API key
+#[post("/api/keys/{id}/revoke")]
+pub async fn revoke_key(
+    key_id: web::Path<i64>,
+    data: web::Data<AppState>,
+    session: Session,
+    http: HttpRequest,
+) -> HttpResponse {
+    let config = &data.config;
+    let result = auth::is_api_ok(http, config, &data.db);
+    if !(result.success || auth::is_session_valid(session, config)) {
+        return if result.error {
+            HttpResponse::Unauthorized().json(result)
+        } else {
+            HttpResponse::Unauthorized().body("Not logged in!")
+        };
+    }
+
+    match database::revoke_api_key(*key_id, &data.db) {
+        Ok(revoked) => {
+            let response = KeyRevokeResponse {
+                success: true,
+                error: false,
+                id: *key_id,
+                revoked,
+            };
+            HttpResponse::Ok().json(response)
+        }
+        Err(ServerError) => {
+            let response = JSONResponse {
+                success: false,
+                error: true,
+                reason: "Something went wrong while revoking the key.".to_string(),
+            };
+            HttpResponse::InternalServerError().json(response)
+        }
+        Err(ClientError { reason }) => {
+            let response = JSONResponse {
+                success: false,
+                error: true,
+                reason,
+            };
+            HttpResponse::Conflict().json(response)
+        }
     }
 }
 
@@ -437,7 +610,7 @@ pub async fn delete_link(
 ) -> HttpResponse {
     let config = &data.config;
     // Call is_api_ok() function, pass HttpRequest
-    let result = auth::is_api_ok(http, config);
+    let result = auth::is_api_ok(http, config, &data.db);
     // If success, delete shortlink
     if result.success {
         match utils::delete_link(&shortlink, &data.db, data.config.allow_capital_letters) {

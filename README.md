@@ -59,7 +59,7 @@ Link: [https://shrtn.fyi](https://shrtn.fyi)
 - Short links can be edited after creation.
 - QR codes can be generated for easy sharing.
 - Reuses an existing short link when the same long URL is submitted again.
-- Supports operation using API key, and lets the user provide hashed password and API key.
+- Supports operation using API keys, including managed keys you can create, list, and revoke.
 - Has a mobile-friendly UI, and automatic dark mode.
 - Can serve a custom landing page, if needed.
 - Has a public mode, where anyone can add links without authentication. Deleting
@@ -113,7 +113,7 @@ Open `http://localhost:4567`, create a short link, and verify features such as Q
 
 # Instructions for CLI usage
 
-[See here.](./CLI.md)
+[See here.](./CLI.md) (includes the in-repo `curtaurl-admin` helper for managed API keys).
 
 # Related software
 

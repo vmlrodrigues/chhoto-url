@@ -43,6 +43,92 @@ struct BackendConfig {
     slug_length: usize,
 }
 
+#[derive(Deserialize)]
+struct KeyCreateResponse {
+    success: bool,
+    error: bool,
+    id: i64,
+    name: String,
+    key: String,
+}
+
+#[derive(Deserialize)]
+struct KeyListResponse {
+    success: bool,
+    error: bool,
+    keys: Vec<ApiKeyEntry>,
+}
+
+#[derive(Deserialize)]
+struct ApiKeyEntry {
+    id: i64,
+    name: String,
+    created_at: i64,
+    last_used_at: Option<i64>,
+    revoked_at: Option<i64>,
+    notes: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct KeyRevokeResponse {
+    success: bool,
+    error: bool,
+    id: i64,
+    revoked: bool,
+}
+
+async fn create_managed_key<T: Service<Request, Response = ServiceResponse, Error = Error>>(
+    app: T,
+    api_key: &str,
+    name: &str,
+) -> (StatusCode, KeyCreateResponse) {
+    let req = test::TestRequest::post()
+        .uri("/api/keys")
+        .insert_header(("X-API-Key", api_key))
+        .set_payload(format!(r#"{{"name":"{name}"}}"#))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let body = to_bytes(resp.into_body()).await.unwrap();
+    let response: KeyCreateResponse = serde_json::from_str(body.as_str()).unwrap();
+
+    (status, response)
+}
+
+async fn list_managed_keys<T: Service<Request, Response = ServiceResponse, Error = Error>>(
+    app: T,
+    api_key: &str,
+) -> (StatusCode, KeyListResponse) {
+    let req = test::TestRequest::get()
+        .uri("/api/keys")
+        .insert_header(("X-API-Key", api_key))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let body = to_bytes(resp.into_body()).await.unwrap();
+    let response: KeyListResponse = serde_json::from_str(body.as_str()).unwrap();
+
+    (status, response)
+}
+
+async fn revoke_managed_key<T: Service<Request, Response = ServiceResponse, Error = Error>>(
+    app: T,
+    api_key: &str,
+    key_id: i64,
+) -> (StatusCode, KeyRevokeResponse) {
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/keys/{key_id}/revoke"))
+        .insert_header(("X-API-Key", api_key))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let body = to_bytes(resp.into_body()).await.unwrap();
+    let response: KeyRevokeResponse = serde_json::from_str(body.as_str()).unwrap();
+
+    (status, response)
+}
+
 fn default_config(test: &str) -> config::Config {
     let conf = config::Config {
     listen_address: String::from("0.0.0.0"),
@@ -92,7 +178,10 @@ async fn create_app(
             .service(services::edit_link)
             .service(services::delete_link)
             .service(services::whoami)
-            .service(services::expand),
+            .service(services::expand)
+            .service(services::create_key)
+            .service(services::list_keys)
+            .service(services::revoke_key),
     )
     .await;
     app
@@ -591,6 +680,50 @@ async fn link_editing() {
     sleep(one_second);
     let status = edit_link(&app, &api_key, "test2", true).await;
     assert!(status.is_client_error());
+
+    let _ = fs::remove_file(format!("/tmp/curtaurl-test-{test}.sqlite"));
+}
+
+
+#[test]
+async fn managed_api_key_lifecycle() {
+    let test = "managed-api-key";
+    let conf = default_config(test);
+    let app = create_app(&conf, test).await;
+    let api_key = conf.api_key.clone().unwrap();
+
+    let (status, created) = create_managed_key(&app, &api_key, "ci-key").await;
+    assert!(status.is_success());
+    assert!(created.success);
+    assert!(!created.error);
+
+    let managed_key = created.key.clone();
+
+    let (status, list) = list_managed_keys(&app, &api_key).await;
+    assert!(status.is_success());
+    assert!(list.success);
+    assert!(!list.keys.is_empty());
+    assert_eq!(list.keys[0].id, created.id);
+    assert_eq!(list.keys[0].name, "ci-key");
+    assert!(list.keys[0].revoked_at.is_none());
+
+    let req = test::TestRequest::get()
+        .uri("/api/getconfig")
+        .insert_header(("X-API-Key", managed_key.clone()))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let (status, revoke) = revoke_managed_key(&app, &api_key, created.id).await;
+    assert!(status.is_success());
+    assert!(revoke.revoked);
+
+    let req = test::TestRequest::get()
+        .uri("/api/getconfig")
+        .insert_header(("X-API-Key", managed_key))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_client_error());
 
     let _ = fs::remove_file(format!("/tmp/curtaurl-test-{test}.sqlite"));
 }

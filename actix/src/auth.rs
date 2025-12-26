@@ -3,22 +3,27 @@
 
 use actix_session::Session;
 use actix_web::HttpRequest;
-use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, SaltString},
+    Argon2, PasswordVerifier,
+};
 use log::{debug, warn};
 use passwords::PasswordGenerator;
+use rusqlite::Connection;
 use std::{rc::Rc, time::SystemTime};
 
 use crate::config::Config;
+use crate::database;
 use crate::services::JSONResponse;
 
 // If the api_key environment variable exists
-pub fn is_api_ok(http: HttpRequest, config: &Config) -> JSONResponse {
+pub fn is_api_ok(http: HttpRequest, config: &Config, db: &Connection) -> JSONResponse {
     // If the api_key environment variable exists
-    if config.api_key.is_some() {
+    if config.api_key.is_some() || database::api_keys_available(db) {
         // If the header exists
         if let Some(header) = get_api_header(&http) {
             // If the header is correct
-            if is_key_valid(header, config) {
+            if is_key_valid(header, config, db) {
                 JSONResponse {
                     success: true,
                     error: false,
@@ -58,8 +63,9 @@ pub fn is_api_ok(http: HttpRequest, config: &Config) -> JSONResponse {
         }
     }
 }
+
 // Validate API key
-pub fn is_key_valid(key: &str, config: &Config) -> bool {
+pub fn is_key_valid(key: &str, config: &Config, db: &Connection) -> bool {
     if let Some(api_key) = &config.api_key {
         // Check if API Key is hashed using Argon2. More algorithms maybe added later.
         let authorized = if config.hash_algorithm.is_some() {
@@ -72,17 +78,22 @@ pub fn is_key_valid(key: &str, config: &Config) -> bool {
             // If hashing is not enabled, use the plaintext API key for matching
             api_key == key
         };
-        if !authorized {
-            warn!("Incorrect API key was provided when connecting to CurtaURL.");
-            false
-        } else {
+        if authorized {
             debug!("Server accessed with API key.");
-            true
+            return true;
         }
-    } else {
-        warn!("API was accessed with API key validation but no API key was specified. Set the 'api_key' environment variable.");
-        false
     }
+
+    if let Some((key_id, key_secret)) = parse_managed_key(key) {
+        return database::is_managed_key_valid(key_id, key_secret, db);
+    }
+
+    if config.api_key.is_none() {
+        warn!("API was accessed with API key validation but no API key was specified. Set the 'api_key' environment variable.");
+    } else {
+        warn!("Incorrect API key was provided when connecting to CurtaURL.");
+    }
+    false
 }
 
 // Generate an API key if the user doesn't specify a secure key
@@ -99,6 +110,24 @@ pub fn gen_key() -> String {
         strict: true,
     };
     key.generate_one().unwrap()
+}
+
+// Generate and hash a managed API key secret
+pub fn gen_managed_key_hash(secret: &str) -> String {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(secret.as_bytes(), &salt)
+        .expect("Failed to hash API key.")
+        .to_string()
+}
+
+// Parse a managed key in the format cu_<id>_<secret>
+pub fn parse_managed_key(key: &str) -> Option<(i64, &str)> {
+    let rest = key.strip_prefix("cu_")?;
+    let mut parts = rest.splitn(2, '_');
+    let key_id = parts.next()?.parse::<i64>().ok()?;
+    let secret = parts.next()?;
+    Some((key_id, secret))
 }
 
 // Check if the API key header exists

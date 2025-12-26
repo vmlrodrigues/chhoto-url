@@ -1,5 +1,7 @@
 use actix_http::{Request, StatusCode};
 use actix_service::Service;
+use actix_session::{storage::CookieSessionStore, SessionMiddleware};
+use actix_web::cookie::Key;
 use actix_web::{body::to_bytes, dev::ServiceResponse, test, web::Bytes, App, Error};
 use regex::Regex;
 use serde::Deserialize;
@@ -79,12 +81,12 @@ struct KeyRevokeResponse {
 
 async fn create_managed_key<T: Service<Request, Response = ServiceResponse, Error = Error>>(
     app: T,
-    api_key: &str,
+    cookie: &str,
     name: &str,
 ) -> (StatusCode, KeyCreateResponse) {
     let req = test::TestRequest::post()
         .uri("/api/keys")
-        .insert_header(("X-API-Key", api_key))
+        .insert_header(("Cookie", cookie))
         .set_payload(format!(r#"{{"name":"{name}"}}"#))
         .to_request();
 
@@ -98,11 +100,11 @@ async fn create_managed_key<T: Service<Request, Response = ServiceResponse, Erro
 
 async fn list_managed_keys<T: Service<Request, Response = ServiceResponse, Error = Error>>(
     app: T,
-    api_key: &str,
+    cookie: &str,
 ) -> (StatusCode, KeyListResponse) {
     let req = test::TestRequest::get()
         .uri("/api/keys")
-        .insert_header(("X-API-Key", api_key))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
     let status = resp.status();
@@ -114,12 +116,12 @@ async fn list_managed_keys<T: Service<Request, Response = ServiceResponse, Error
 
 async fn revoke_managed_key<T: Service<Request, Response = ServiceResponse, Error = Error>>(
     app: T,
-    api_key: &str,
+    cookie: &str,
     key_id: i64,
 ) -> (StatusCode, KeyRevokeResponse) {
     let req = test::TestRequest::post()
         .uri(&format!("/api/keys/{key_id}/revoke"))
-        .insert_header(("X-API-Key", api_key))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
     let status = resp.status();
@@ -127,6 +129,24 @@ async fn revoke_managed_key<T: Service<Request, Response = ServiceResponse, Erro
     let response: KeyRevokeResponse = serde_json::from_str(body.as_str()).unwrap();
 
     (status, response)
+}
+
+async fn login_admin<T: Service<Request, Response = ServiceResponse, Error = Error>>(
+    app: T,
+    password: &str,
+) -> String {
+    let req = test::TestRequest::post()
+        .uri("/api/login")
+        .set_payload(password.to_string())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+    let cookie = resp
+        .headers()
+        .get("set-cookie")
+        .and_then(|v| v.to_str().ok())
+        .unwrap();
+    cookie.split(';').next().unwrap().to_string()
 }
 
 fn default_config(test: &str) -> config::Config {
@@ -159,8 +179,15 @@ async fn create_app(
     test: &str,
 ) -> impl Service<Request, Response = ServiceResponse, Error = Error> {
     let _ = fs::remove_file(format!("/tmp/curtaurl-test-{test}.sqlite"));
+    let secret_key = Key::generate();
     let app = test::init_service(
         App::new()
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
+                    .cookie_same_site(actix_web::cookie::SameSite::Strict)
+                    .cookie_secure(false)
+                    .build(),
+            )
             .app_data(web::Data::new(AppState {
                 db: database::open_db(
                     format!("/tmp/curtaurl-test-{test}.sqlite").as_str(),
@@ -179,6 +206,7 @@ async fn create_app(
             .service(services::delete_link)
             .service(services::whoami)
             .service(services::expand)
+            .service(services::login)
             .service(services::create_key)
             .service(services::list_keys)
             .service(services::revoke_key),
@@ -690,16 +718,16 @@ async fn managed_api_key_lifecycle() {
     let test = "managed-api-key";
     let conf = default_config(test);
     let app = create_app(&conf, test).await;
-    let api_key = conf.api_key.clone().unwrap();
+    let cookie = login_admin(&app, conf.password.as_deref().unwrap()).await;
 
-    let (status, created) = create_managed_key(&app, &api_key, "ci-key").await;
+    let (status, created) = create_managed_key(&app, &cookie, "ci-key").await;
     assert!(status.is_success());
     assert!(created.success);
     assert!(!created.error);
 
     let managed_key = created.key.clone();
 
-    let (status, list) = list_managed_keys(&app, &api_key).await;
+    let (status, list) = list_managed_keys(&app, &cookie).await;
     assert!(status.is_success());
     assert!(list.success);
     assert!(!list.keys.is_empty());
@@ -714,7 +742,7 @@ async fn managed_api_key_lifecycle() {
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 
-    let (status, revoke) = revoke_managed_key(&app, &api_key, created.id).await;
+    let (status, revoke) = revoke_managed_key(&app, &cookie, created.id).await;
     assert!(status.is_success());
     assert!(revoke.revoked);
 

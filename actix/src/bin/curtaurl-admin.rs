@@ -62,10 +62,18 @@ fn main() {
     }
 
     let base_url = env::var("CURTAURL_URL").unwrap_or_else(|_| "http://localhost:4567".to_string());
-    let api_key = match env::var("CURTAURL_API_KEY") {
-        Ok(key) => key,
+    let password = match env::var("CURTAURL_PASSWORD") {
+        Ok(value) => value,
         Err(_) => {
-            eprintln!("CURTAURL_API_KEY is required.");
+            eprintln!("CURTAURL_PASSWORD is required.");
+            std::process::exit(1);
+        }
+    };
+
+    let cookie = match login(&base_url, &password) {
+        Ok(value) => value,
+        Err(message) => {
+            eprintln!("{message}");
             std::process::exit(1);
         }
     };
@@ -101,7 +109,7 @@ fn main() {
             });
 
             let resp = ureq::post(&format!("{base_url}/api/keys"))
-                .set("X-API-Key", &api_key)
+                .set("Cookie", &cookie)
                 .send_json(payload);
 
             match resp {
@@ -127,7 +135,7 @@ fn main() {
         }
         "list" => {
             let resp = ureq::get(&format!("{base_url}/api/keys"))
-                .set("X-API-Key", &api_key)
+                .set("Cookie", &cookie)
                 .call();
 
             match resp {
@@ -214,7 +222,7 @@ fn main() {
                 .unwrap_or_else(|_| exit_with_error("--id must be a number."));
 
             let resp = ureq::post(&format!("{base_url}/api/keys/{key_id}/revoke"))
-                .set("X-API-Key", &api_key)
+                .set("Cookie", &cookie)
                 .call();
 
             match resp {
@@ -249,6 +257,37 @@ fn main() {
 
 
 
+
+
+fn login(base_url: &str, password: &str) -> Result<String, String> {
+    let resp = ureq::post(&format!("{base_url}/api/login"))
+        .set("Content-Type", "text/plain")
+        .send_string(password);
+
+    match resp {
+        Ok(response) => {
+            let cookie = response
+                .header("set-cookie")
+                .and_then(|value| value.split(';').next())
+                .unwrap_or("")
+                .to_string();
+            if cookie.is_empty() {
+                Err("Login succeeded but no session cookie was returned.".to_string())
+            } else {
+                Ok(cookie)
+            }
+        }
+        Err(ureq::Error::Status(code, response)) => {
+            let body = response.into_string().unwrap_or_default();
+            if body.is_empty() {
+                Err(format!("Login failed with status {code}."))
+            } else {
+                Err(format!("Login failed: {body}"))
+            }
+        }
+        Err(ureq::Error::Transport(err)) => Err(format!("Login transport error: {err}")),
+    }
+}
 
 fn format_row(cells: &[String], widths: &[usize]) -> String {
     let mut out = String::from("|");
@@ -308,6 +347,6 @@ fn exit_with_error(message: &str) -> ! {
 
 fn print_usage() {
     println!(
-        "curtaurl-admin <command> [options]\n\nCommands:\n  create --name <name> [--notes <notes>]\n  list\n  revoke --id <id>\n\nEnvironment variables:\n  CURTAURL_URL (default: http://localhost:4567)\n  CURTAURL_API_KEY (required)"
+        "curtaurl-admin <command> [options]\n\nCommands:\n  create --name <name> [--notes <notes>]\n  list\n  revoke --id <id>\n\nEnvironment variables:\n  CURTAURL_URL (default: http://localhost:4567)\n  CURTAURL_PASSWORD (required)"
     );
 }

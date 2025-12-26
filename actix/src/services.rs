@@ -358,16 +358,10 @@ pub async fn create_key(
     req: String,
     data: web::Data<AppState>,
     session: Session,
-    http: HttpRequest,
 ) -> HttpResponse {
     let config = &data.config;
-    let result = auth::is_api_ok(http, config, &data.db);
-    if !(result.success || auth::is_session_valid(session, config)) {
-        return if result.error {
-            HttpResponse::Unauthorized().json(result)
-        } else {
-            HttpResponse::Unauthorized().body("Not logged in!")
-        };
+    if !auth::is_session_valid(session, config) {
+        return HttpResponse::Unauthorized().body("Not logged in!");
     }
 
     let Ok(payload) = serde_json::from_str::<CreateKeyRequest>(&req) else {
@@ -425,16 +419,10 @@ pub async fn create_key(
 pub async fn list_keys(
     data: web::Data<AppState>,
     session: Session,
-    http: HttpRequest,
 ) -> HttpResponse {
     let config = &data.config;
-    let result = auth::is_api_ok(http, config, &data.db);
-    if !(result.success || auth::is_session_valid(session, config)) {
-        return if result.error {
-            HttpResponse::Unauthorized().json(result)
-        } else {
-            HttpResponse::Unauthorized().body("Not logged in!")
-        };
+    if !auth::is_session_valid(session, config) {
+        return HttpResponse::Unauthorized().body("Not logged in!");
     }
 
     let keys = database::list_api_keys(&data.db);
@@ -452,16 +440,10 @@ pub async fn revoke_key(
     key_id: web::Path<i64>,
     data: web::Data<AppState>,
     session: Session,
-    http: HttpRequest,
 ) -> HttpResponse {
     let config = &data.config;
-    let result = auth::is_api_ok(http, config, &data.db);
-    if !(result.success || auth::is_session_valid(session, config)) {
-        return if result.error {
-            HttpResponse::Unauthorized().json(result)
-        } else {
-            HttpResponse::Unauthorized().body("Not logged in!")
-        };
+    if !auth::is_session_valid(session, config) {
+        return HttpResponse::Unauthorized().body("Not logged in!");
     }
 
     match database::revoke_api_key(*key_id, &data.db) {

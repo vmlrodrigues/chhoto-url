@@ -6,7 +6,6 @@ on:
     paths: ["actix/**"]
   pull_request:
     branches: ["main"]
-    paths: ["actix/**"]
   workflow_dispatch:
 
 env:
@@ -20,7 +19,15 @@ jobs:
         working-directory: ./actix
     steps:
       - uses: actions/checkout@v4
+      - name: Detect actix changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            actix:
+              - 'actix/**'
       - name: Cache Dependencies
+        if: steps.changes.outputs.actix == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -30,6 +37,11 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-
       - name: Build
+        if: steps.changes.outputs.actix == 'true'
         run: cargo build
       - name: Run tests
+        if: steps.changes.outputs.actix == 'true'
         run: cargo test
+      - name: Skip tests (no actix changes)
+        if: steps.changes.outputs.actix != 'true'
+        run: echo "No actix changes; skipping tests."

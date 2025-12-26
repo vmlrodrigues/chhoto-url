@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Sayantan Santra <sayantan.santra689@gmail.com>
 // SPDX-License-Identifier: MIT
 
-use log::{error, info};
+use log::{error, info, warn};
+use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
 use rusqlite::{fallible_iterator::FallibleIterator, Connection};
 use serde::Serialize;
 use std::rc::Rc;
@@ -275,9 +276,144 @@ pub fn delete_link(shortlink: &str, db: &Connection) -> Result<(), ChhotoError> 
     }
 }
 
+
+#[derive(Serialize)]
+pub struct ApiKeyRecord {
+    pub id: i64,
+    pub name: String,
+    pub created_at: i64,
+    pub last_used_at: Option<i64>,
+    pub revoked_at: Option<i64>,
+    pub notes: Option<String>,
+}
+
+// Check if any API keys are configured
+pub fn api_keys_available(db: &Connection) -> bool {
+    let result: Result<i64, _> = db.query_row(
+        "SELECT COUNT(*) FROM api_keys WHERE revoked_at IS NULL",
+        [],
+        |row| row.get(0),
+    );
+    matches!(result, Ok(count) if count > 0)
+}
+
+// Create a managed API key entry
+pub fn create_api_key(
+    name: &str,
+    key_hash: &str,
+    notes: Option<&str>,
+    db: &Connection,
+) -> Result<i64, ChhotoError> {
+    let now = chrono::Utc::now().timestamp();
+    let Ok(mut statement) = db.prepare_cached(
+        "INSERT INTO api_keys (name, key_hash, created_at, notes) VALUES (?1, ?2, ?3, ?4)",
+    ) else {
+        error!("Error preparing SQL statement for create_api_key.");
+        return Err(ServerError);
+    };
+    statement
+        .execute((name, key_hash, now, notes))
+        .map_err(|_| ServerError)?;
+    Ok(db.last_insert_rowid())
+}
+
+// Fetch API key metadata for listing
+pub fn list_api_keys(db: &Connection) -> Vec<ApiKeyRecord> {
+    let Ok(mut statement) = db.prepare_cached(
+        "SELECT id, name, created_at, last_used_at, revoked_at, notes FROM api_keys ORDER BY id ASC",
+    ) else {
+        error!("Error preparing SQL statement for list_api_keys.");
+        return vec![];
+    };
+    let Ok(rows) = statement.query([]) else {
+        error!("Error running SQL statement for list_api_keys.");
+        return vec![];
+    };
+    rows
+        .map(|row| {
+            Ok(ApiKeyRecord {
+                id: row.get("id")?,
+                name: row.get("name")?,
+                created_at: row.get("created_at")?,
+                last_used_at: row.get("last_used_at")?,
+                revoked_at: row.get("revoked_at")?,
+                notes: row.get("notes")?,
+            })
+        })
+        .collect()
+        .unwrap_or_else(|err| {
+            error!("Error processing api_keys rows: {err}");
+            vec![]
+        })
+}
+
+// Fetch API key hash for validation
+pub fn get_api_key_hash(
+    key_id: i64,
+    db: &Connection,
+) -> Result<Option<(String, Option<i64>)>, ChhotoError> {
+    let Ok(mut statement) = db.prepare_cached(
+        "SELECT key_hash, revoked_at FROM api_keys WHERE id = ?1",
+    ) else {
+        error!("Error preparing SQL statement for get_api_key_hash.");
+        return Err(ServerError);
+    };
+    match statement.query_row([key_id], |row| Ok((row.get(0)?, row.get(1)?))) {
+        Ok(result) => Ok(Some(result)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(_) => Err(ServerError),
+    }
+}
+
+// Update last_used_at for a managed key
+pub fn touch_api_key_last_used(key_id: i64, db: &Connection) {
+    let now = chrono::Utc::now().timestamp();
+    if let Ok(mut statement) = db.prepare_cached(
+        "UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2",
+    ) {
+        let _ = statement.execute((now, key_id));
+    }
+}
+
+// Revoke a managed API key
+pub fn revoke_api_key(key_id: i64, db: &Connection) -> Result<bool, ChhotoError> {
+    let now = chrono::Utc::now().timestamp();
+    let Ok(mut statement) = db.prepare_cached(
+        "UPDATE api_keys SET revoked_at = ?1 WHERE id = ?2 AND revoked_at IS NULL",
+    ) else {
+        error!("Error preparing SQL statement for revoke_api_key.");
+        return Err(ServerError);
+    };
+    let updated = statement.execute((now, key_id)).map_err(|_| ServerError)?;
+    Ok(updated > 0)
+}
+
+// Validate a managed API key
+pub fn is_managed_key_valid(key_id: i64, key_secret: &str, db: &Connection) -> bool {
+    let Ok(Some((hash, revoked_at))) = get_api_key_hash(key_id, db) else {
+        return false;
+    };
+    if revoked_at.is_some() {
+        return false;
+    }
+    let Ok(parsed) = PasswordHash::new(&hash) else {
+        warn!("Stored API key hash is invalid.");
+        return false;
+    };
+    if Argon2::default()
+        .verify_password(key_secret.as_bytes(), &parsed)
+        .is_ok()
+    {
+        touch_api_key_last_used(key_id, db);
+        true
+    } else {
+        false
+    }
+}
+
 pub fn open_db(path: &str, use_wal_mode: bool, ensure_acid: bool) -> Connection {
     // Set current user_version. Should be incremented on change of schema.
-    let user_version = 2;
+    let user_version = 3;
 
     let db = Connection::open(path).expect("Unable to open database!");
 
@@ -316,6 +452,20 @@ pub fn open_db(path: &str, use_wal_mode: bool, ensure_acid: bool) -> Connection 
         [],
     )
     .expect("Unable to create index on long_url.");
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            key_hash TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            last_used_at INTEGER,
+            revoked_at INTEGER,
+            notes TEXT
+         )",
+        [],
+    )
+    .expect("Unable to create api_keys table.");
+
 
     let current_user_version: u32 = if table_exists == 0 {
         // It would mean that the table is newly created i.e. has the desired schema
@@ -342,6 +492,22 @@ pub fn open_db(path: &str, use_wal_mode: bool, ensure_acid: bool) -> Connection 
             [],
         )
         .expect("Unable to apply migration 2.");
+    }
+    // Migration 3: Add api_keys table
+    if current_user_version < 3 {
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            key_hash TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            last_used_at INTEGER,
+            revoked_at INTEGER,
+            notes TEXT
+         )",
+            [],
+        )
+        .expect("Unable to apply migration 3.");
     }
 
     // Create index on expiry_time for faster lookups

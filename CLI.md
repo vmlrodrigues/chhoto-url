@@ -22,6 +22,50 @@ validation (see section above). If the API key is insecure, a warning will be ou
 
 Example Linux command for generating a secure API key: `tr -dc A-Za-z0-9 </dev/urandom | head -c 128`
 
+
+### Managed API keys
+
+CurtaURL can issue additional API keys that are stored as hashes and can be revoked later. This is useful when you want to hand out
+keys without rotating the main `api_key` value.
+
+#### Create a managed key
+
+```bash
+curl -X POST     -H "X-API-Key: <YOUR_API_KEY>"     -d '{ "name":"<name>", "notes":"<notes>" }'     http://localhost:4567/api/keys
+```
+
+The server replies with a one-time key in the format `cu_<id>_<secret>`.
+
+#### List managed keys
+
+```bash
+curl -H "X-API-Key: <YOUR_API_KEY>" http://localhost:4567/api/keys
+```
+
+#### Revoke a managed key
+
+```bash
+curl -X POST     -H "X-API-Key: <YOUR_API_KEY>"     http://localhost:4567/api/keys/<id>/revoke
+```
+
+### Helper tool (local use)
+
+A lightweight helper binary ships with the server crate so you do not need a separate repo. You can load defaults from a local `.env` file
+(with `CURTAURL_URL` and `CURTAURL_API_KEY`) and build a standalone executable:
+
+```bash
+# Build once
+cargo build --release --bin curtaurl-admin
+
+# .env example
+# CURTAURL_URL=http://localhost:4567
+# CURTAURL_API_KEY=your_key_here
+
+./target/release/curtaurl-admin create --name "ci-key" --notes "Raspberry Pi"
+./target/release/curtaurl-admin list
+./target/release/curtaurl-admin revoke --id 1
+```
+
 For each response, the response code will be `200`, `401`, `400`, `500`, or `404`, depending on the context. The routes are as follows.
 
 #### `/api/new`

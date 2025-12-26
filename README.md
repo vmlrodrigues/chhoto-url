@@ -93,7 +93,6 @@ Link: [https://shrtn.fyi](https://shrtn.fyi)
 
 <p align="middle">
   <img src="screenshot-desktop.webp" height="250" alt="desktop screenshot" />
-  <img src="screenshot-mobile.webp" height="250" alt="mobile screenshot" />
 </p>
 
 # Installation and configuration
